@@ -6,7 +6,21 @@ import pandas as pd
 import time
 import re
 from playwright.sync_api import sync_playwright
+import os
 
+# ==========================================
+# 🔧 雲端環境自動修復：安裝 Playwright 瀏覽器
+# ==========================================
+def install_playwright_browsers():
+    # 檢查是否已經安裝過，避免每次執行都重複下載浪費時間
+    if not os.path.exists("/home/appuser/.cache/ms-playwright"):
+        with st.spinner("首次執行：正在為雲端伺服器安裝 Chromium 瀏覽器..."):
+            os.system("playwright install chromium")
+            # 某些環境需要額外安裝系統依賴
+            os.system("playwright install-deps")
+
+# 在程式一開始就執行
+install_playwright_browsers()
 # ==========================================
 # ⚙️ 1. 安全設定
 # ==========================================
