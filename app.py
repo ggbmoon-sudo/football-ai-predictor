@@ -204,14 +204,22 @@ with tab1:
             filtered_matches = [m for m in all_data if m['league']['id'] in ids]
             
             if filtered_matches:
+                # 建立反向字典，用來把 API 的 ID 轉回你設定的中文聯賽名
+                REVERSE_LEAGUE_IDS = {v: k for k, v in LEAGUE_IDS.items()}
+                
                 raw_names = [f"{m['teams']['home']['name']} vs {m['teams']['away']['name']}" for m in filtered_matches]
                 translated_names = translate_match_names(raw_names)
                 
                 display_matches = []
                 for i, m in enumerate(filtered_matches):
                     hkt_time = convert_to_hkt(m['fixture']['date'])
+                    league_id = m['league']['id']
+                    # 抓取中文聯賽名，如果找不到就顯示 API 原本的英文名
+                    league_cn = REVERSE_LEAGUE_IDS.get(league_id, m['league']['name'])
+                    
+                    # 🎯 這裡把聯賽名加進了顯示字串的最前面
                     display_matches.append({
-                        "display": f"{hkt_time} | {translated_names[i]}",
+                        "display": f"[{league_cn}] {hkt_time} | {translated_names[i]}",
                         "raw": f"{m['teams']['home']['name']} vs {m['teams']['away']['name']}"
                     })
                 st.session_state['display_matches'] = display_matches
