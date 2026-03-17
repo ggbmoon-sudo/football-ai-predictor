@@ -67,19 +67,52 @@ def convert_to_hkt(utc_date_str):
     hkt_dt = utc_dt + datetime.timedelta(hours=8)
     return hkt_dt.strftime("%m-%d %H:%M")
 
+# 利用 AI 批量翻譯隊名 (強化除錯版)
 def translate_match_names(match_list):
     if not match_list: return []
     names_to_translate = "\n".join(match_list)
-    prompt = f"請將以下足球賽事對陣清單翻譯成香港繁體中文隊名，保持『隊名A vs 隊名B』格式，直接回傳翻譯後的清單：\n{names_to_translate}"
+    
+    # 強化 Prompt，強制 AI 絕對不能說廢話
+    prompt = f"""
+    任務：將以下足球對陣清單翻譯為「香港繁體中文」（如：Arsenal vs Chelsea 翻譯為 阿仙奴 vs 車路士）。
+    嚴格要求：
+    1. 只能回傳翻譯後的對陣，每一行一個對陣。
+    2. 絕對不要加上任何開場白、結尾語、或 Markdown 標記 (如 ```)。
+    3. 必須保留 'vs' 字眼。
+    
+    待翻譯清單：
+    {names_to_translate}
+    """
     try:
-        # 改用 OpenAI 格式發送請求
         response = client.chat.completions.create(
             model=MODEL_NAME,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[
+                # 加入 System Prompt 設定機器人性格
+                {"role": "system", "content": "你是一個專業的足球翻譯機器人，只輸出翻譯結果，絕對不說其他廢話。"},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.3 # 降低隨機性，讓輸出格式更穩定
         )
-        translated = response.choices[0].message.content.strip().split('\n')
-        return translated if len(translated) == len(match_list) else match_list
-    except:
+        
+        # 抓取 AI 回傳的純文字
+        raw_output = response.choices[0].message.content.strip()
+        
+        # 移除可能不小心產生的 markdown 標記
+        raw_output = raw_output.replace("```text", "").replace("```", "")
+        
+        # 將文字按行切分，過濾掉空行，並且確保該行有 'vs' 這個字
+        translated = [line.strip() for line in raw_output.split('\n') if line.strip() and 'vs' in line.lower()]
+        
+        # 如果翻譯過濾後的數量與原始清單一致，就成功替換
+        if len(translated) == len(match_list):
+            return translated
+        else:
+            # 如果還是失敗，可以把這行印在終端機看看 AI 到底回傳了什麼搗亂的字
+            print(f"翻譯行數不符。原:{len(match_list)}行, 翻:{len(translated)}行")
+            return match_list
+            
+    except Exception as e:
+        print(f"翻譯請求發生錯誤: {e}")
         return match_list
 
 def deep_analyze_agent(match_name):
