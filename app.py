@@ -38,7 +38,8 @@ except KeyError:
 # 初始化通用 AI 客戶端，指向你的專屬 URL
 client = OpenAI(
     api_key=GEMINI_API_KEY,
-    base_url="http://api.mttieeo.com/v1"
+    # 👇 關鍵修改：必須是 https，否則會發生重導向導致 POST 變成 GET
+    base_url="https://api.mttieeo.com/v1" 
 )
 # 設定你的專屬模型名稱
 MODEL_NAME = "[F]gemini-2.5-flash"
