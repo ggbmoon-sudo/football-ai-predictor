@@ -100,9 +100,12 @@ def deep_analyze_agent(match_name):
     """
     try:
         response = model.generate_content(prompt)
+        # 檢查 AI 是否真的有給出內容
+        if not response.text:
+            return "AI 未能生成報告"
         return response.text
     except Exception as e:
-        return f"AI 服務異常: {str(e)}"
+        return f"API 錯誤: {str(e)}"
 
 # ==========================================
 # 📡 3. 數據抓取
@@ -160,23 +163,37 @@ with tab1:
         choices = [m['display'] for m in st.session_state['display_matches']]
         targets = st.multiselect("勾選欲分析的場次：", choices)
         
-        if st.button("🚀 執行批量 AI 精算分析"):
+       if st.button("🚀 執行批量 AI 精算分析"):
             summary_data = []
             for t in targets:
-                with st.status(f"分析中: {t}...", expanded=True) as status:
+                with st.status(f"正在分析: {t}...", expanded=False):
                     report = deep_analyze_agent(t)
                     
-                    try:
-                        score = re.search(r"\[Score: (.*?)\]", report).group(1)
-                        corners = re.search(r"\[Corners: (.*?)\]", report).group(1)
-                        rec = re.search(r"\[Rec: (.*?)\]", report).group(1)
-                        win_conf = int(re.search(r"\[Win_Conf: (\d+)%\]", report).group(1))
-                    except:
-                        score, corners, rec, win_conf = "N/A", "N/A", "N/A", 50
+                    # 💡 修復點 1: 改進的正則表達式 (更寬鬆，允許空格)
+                    def extract(pattern, text, default="N/A"):
+                        match = re.search(pattern, text)
+                        return match.group(1).strip() if match else default
+
+                    score = extract(r"\[Score:\s*(.*?)\]", report)
+                    corners = extract(r"\[Corners:\s*(.*?)\]", report)
+                    rec = extract(r"\[Rec:\s*(.*?)\]", report)
                     
-                    summary_data.append({"賽事": t, "比分": score, "角球": corners, "推薦": rec, "信心%": win_conf, "報告": report})
+                    # 提取信心度數字
+                    conf_match = re.search(r"\[Win_Conf:\s*(\d+)%?\]", report)
+                    win_conf = int(conf_match.group(1)) if conf_match else 50
+                    
+                    summary_data.append({
+                        "賽事": t, "比分": score, "角球": corners, 
+                        "推薦": rec, "信心%": win_conf, "報告": report
+                    })
+                    
+                    st.markdown(f"### {t} 報告摘要")
                     st.markdown(report)
-                    status.update(label=f"✅ {t} 完成", state="complete")
+                    
+                    # 💡 修復點 2: 加入小延遲，保護 API 額度
+                    time.sleep(2) 
+                    
+                status.update(label=f"✅ {t} 完成", state="complete")
 
             if summary_data:
                 st.divider()
