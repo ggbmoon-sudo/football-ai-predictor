@@ -119,7 +119,7 @@ def translate_match_names(match_list):
 # 🧠 AI 分析核心函數 (強化角球與戰術分析)
 # ==========================================
 def deep_analyze_agent(match_name):
-prompt = f"""
+    prompt = f"""
     【系統指令：啟動「蒙地卡羅大數據」與「戰術行為學」預測引擎】
     角色：你是一位擁有 20 年經驗、專為頂級辛迪加(Syndicate)服務的足球博彩精算師。
     目標賽事：{match_name}
@@ -150,6 +150,7 @@ prompt = f"""
     [Win_Conf: X%] (勝負/讓球盤信心度，0-100)
     [Corner_Conf: X%] (角球預測信心度，0-100)
     """
+    
     try:
         response = client.chat.completions.create(
             model=MODEL_NAME,
