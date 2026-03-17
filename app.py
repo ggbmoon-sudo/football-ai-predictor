@@ -115,41 +115,55 @@ def translate_match_names(match_list):
         print(f"翻譯請求發生錯誤: {e}")
         return match_list
 
+# ==========================================
+# 🧠 AI 分析核心函數 (強化角球與戰術分析)
+# ==========================================
 def deep_analyze_agent(match_name):
-    prompt = f"""
-    【重要指令：你現在是一個具備實時聯網搜索能力的足球精算代理】
+   prompt = f"""
+    【系統指令：啟動「蒙地卡羅大數據」與「戰術行為學」預測引擎】
+    角色：你是一位擁有 20 年經驗、專為頂級辛迪加(Syndicate)服務的足球博彩精算師。
     目標賽事：{match_name}
 
-    分析要求：
-    1. **實時搜索**：檢索各大莊家（Bet365, HKJC）對本場的初盤與現盤走勢，分析資金熱度。
-    2. **傷停與環境**：搜索最新傷病名單（主力門將/前鋒）及比賽當地即時天氣預報。
-    3. **戰意分析**：考量積分壓力（保級/奪冠）、過往對賽(H2H)紀錄。
-    4. **戰術相剋**：分析雙方攻防風格與預期進球(xG)。
+    請聯網檢索最新資訊，並執行以下極度深度的四步推演邏輯，任何敷衍或表面的分析都將不被接受：
 
-    輸出：
-    [Score: X-Y]
-    [Corners: X-Y]
-    [Rec: 推薦投注選項]
-    [Win_Conf: X%]
-    [Corner_Conf: X%]
+    第一步：【進球與失球模型 (xG/xGA) 拆解】
+    - 檢索雙方近 5 場的 xG (預期進球) 與 xGA (預期失球)，對比實際進球數。判斷哪隊在前場運氣好/把握力強，哪隊後防有隱患。
+    - 分析雙方主客場的進球分佈差異。
+
+    第二步：【戰術相剋與陣容缺陷推演】
+    - 檢索最新傷停名單。特別點出「防線核心、中場節奏控制器、主力射手」缺陣對攻防轉換的具體影響。
+    - 戰術推演：主隊的進攻發起方式（邊路傳中/中路滲透/防守反擊）是否剛好剋制客隊的防守弱點（如：防空能力差、兩翼身後空檔大）？
+
+    第三步：【環境、戰意與莊家資金劇本】
+    - 檢索當地即時天氣與場地狀況（雨天易致失誤、影響短傳與大細盤）。
+    - 判斷雙方戰意（爭冠/保級/盃賽輪換/魔鬼賽程體能透支）。
+    - 檢視各大莊家（Bet365, HKJC）的初盤至現盤走勢。大細盤與讓球盤的水位變動，暗示了莊家預期這是一場「沉悶防守戰」還是「對攻大戰」？
+
+    第四步：【角球矩陣推算 (Corner Matrix)】
+    - 根據上述的控球率預測、邊路進攻依賴度（下底傳中頻率）、以及落後方反撲的機率，推算本場總角球數與分佈。
+
+    【最終精算結論】
+    請綜合以上所有變數，給出最具說服力的理據，並在報告最末端嚴格以獨立的行數輸出以下標籤（勿加其他符號）：
+    [Score: X-Y]  (這裡必須給出概率最高的最穩比分)
+    [Corners: X-Y] (這裡給出總角球數區間，如 9-11)
+    [Rec: 這裡填寫 1 個最穩投注選項，如：大2.5、主勝、客+1、角球大10.5]
+    [Win_Conf: X%] (勝負/讓球盤信心度，0-100)
+    [Corner_Conf: X%] (角球預測信心度，0-100)
     """
     try:
-        # 改用 OpenAI 格式發送請求
         response = client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
-                {"role": "system", "content": "你是一位擁有 20 年經驗的足球精算師。"},
+                {"role": "system", "content": "你是一位擁有 20 年經驗的足球精算師，尤其擅長透過球隊戰術與歷史數據推算角球數量及比分。"},
                 {"role": "user", "content": prompt}
             ]
         )
         content = response.choices[0].message.content
-        if not content:
-            return "AI 未能生成報告"
+        if not content: return "AI 未能生成報告"
         return content
     except Exception as e:
         error_msg = str(e)
-        if "429" in error_msg or "Quota" in error_msg:
-            return "⚠️ ERROR_QUOTA_EXCEEDED"
+        if "429" in error_msg or "Quota" in error_msg: return "⚠️ ERROR_QUOTA_EXCEEDED"
         return f"API 錯誤: {error_msg}"
 
 # ==========================================
@@ -215,28 +229,35 @@ with tab1:
 
             for t in targets:
                 with st.status(f"正在深度分析: {t}...", expanded=True) as status:
-                    st.write("🌐 正在獲取聯網數據與賠率走勢...")
+                    st.write("🌐 正在獲取聯網數據、戰術特徵與賠率走勢...")
                     report = deep_analyze_agent(t)
                     
                     if report == "⚠️ ERROR_QUOTA_EXCEEDED":
                         st.error("🚫 API 額度已耗盡，請檢查代理伺服器狀態。")
                         break
                     
-                    st.write("📊 正在解析精算標籤...")
+                    st.write("📊 正在解析勝負與角球精算標籤...")
                     
+                    # 提取文字結果
                     score = safe_extract(r"\[Score:\s*(.*?)\]", report)
                     corners = safe_extract(r"\[Corners:\s*(.*?)\]", report)
                     rec = safe_extract(r"\[Rec:\s*(.*?)\]", report)
                     
-                    conf_match = re.search(r"\[Win_Conf:\s*(\d+)%?\]", report)
-                    win_conf = int(conf_match.group(1)) if conf_match else 50
+                    # 提取勝負信心 %
+                    win_match = re.search(r"\[Win_Conf:\s*(\d+)%?\]", report)
+                    win_conf = int(win_match.group(1)) if win_match else 50
+                    
+                    # 提取角球信心 % (新增)
+                    cor_match = re.search(r"\[Corner_Conf:\s*(\d+)%?\]", report)
+                    cor_conf = int(cor_match.group(1)) if cor_match else 50
                     
                     summary_data.append({
                         "賽事": t, 
                         "比分": score, 
                         "角球": corners, 
                         "推薦": rec, 
-                        "信心%": win_conf, 
+                        "勝負信心%": win_conf,   # 區分勝負
+                        "角球信心%": cor_conf,   # 區分角球
                         "報告": report
                     })
                     
@@ -250,8 +271,18 @@ with tab1:
             if summary_data:
                 st.subheader("📋 批量分析決策中心")
                 df = pd.DataFrame(summary_data)
-                st.table(df[["賽事", "比分", "角球", "推薦", "信心%"]])
-                st.bar_chart(df.set_index("賽事")["信心%"])
+                
+                # 更新表格欄位，同時顯示勝負與角球信心
+                st.table(df[["賽事", "比分", "角球", "推薦", "勝負信心%", "角球信心%"]])
+                
+                # 雙圖表顯示：一眼看出哪場適合買波膽，哪場適合買角球
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write("🎯 勝負預測信心")
+                    st.bar_chart(df.set_index("賽事")["勝負信心%"])
+                with col2:
+                    st.write("🚩 角球預測信心")
+                    st.bar_chart(df.set_index("賽事")["角球信心%"], color="#ff2b2b") # 角球圖表改用紅色方便區分
 
 # ------------------------------------------
 # TAB 2: 馬會賠率雷達
