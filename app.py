@@ -166,32 +166,26 @@ with tab1:
 if st.button("🚀 執行批量 AI 精算分析"):
             summary_data = []
             for t in targets:
-                with st.status(f"正在分析: {t}...", expanded=False):
+                # 注意：這裡開始進入 status 區塊
+                with st.status(f"正在分析: {t}...", expanded=False) as status:
+                    st.write("🔍 正在執行深度分析...")
                     report = deep_analyze_agent(t)
                     
-                    # 💡 修復點 1: 改進的正則表達式 (更寬鬆，允許空格)
-                    def extract(pattern, text, default="N/A"):
-                        match = re.search(pattern, text)
-                        return match.group(1).strip() if match else default
-
-                    score = extract(r"\[Score:\s*(.*?)\]", report)
-                    corners = extract(r"\[Corners:\s*(.*?)\]", report)
-                    rec = extract(r"\[Rec:\s*(.*?)\]", report)
-                    
-                    # 提取信心度數字
-                    conf_match = re.search(r"\[Win_Conf:\s*(\d+)%?\]", report)
-                    win_conf = int(conf_match.group(1)) if conf_match else 50
+                    # ... 數據提取邏輯 ...
+                    # (確保這些都在 with 縮排內)
                     
                     summary_data.append({
                         "賽事": t, "比分": score, "角球": corners, 
                         "推薦": rec, "信心%": win_conf, "報告": report
                     })
                     
-                    st.markdown(f"### {t} 報告摘要")
                     st.markdown(report)
                     
-                    # 💡 修復點 2: 加入小延遲，保護 API 額度
-                    time.sleep(2) 
+                    # ✅ 關鍵：這行必須與 st.write/st.markdown 保持同樣的縮排層級
+                    status.update(label=f"✅ {t} 完成", state="complete")
+                
+                # 這裡才離開 status 區塊
+                time.sleep(1) 
                     
                 status.update(label=f"✅ {t} 完成", state="complete")
 
