@@ -7,19 +7,28 @@ import time
 import re
 from playwright.sync_api import sync_playwright
 import os
+import subprocess
 
 # ==========================================
 # 🔧 雲端環境自動修復：安裝 Playwright 瀏覽器
 # ==========================================
 def install_playwright_browsers():
-    # 檢查是否已經安裝過，避免每次執行都重複下載浪費時間
-    if not os.path.exists("/home/appuser/.cache/ms-playwright"):
-        with st.spinner("首次執行：正在為雲端伺服器安裝 Chromium 瀏覽器..."):
-            os.system("playwright install chromium")
-            # 某些環境需要額外安裝系統依賴
-            os.system("playwright install-deps")
+    # 檢查是否已經安裝過瀏覽器，避免重複下載
+    # Streamlit Cloud 的快取路徑通常在 /home/appuser/.cache/ms-playwright
+    cache_path = "/home/appuser/.cache/ms-playwright"
+    
+    if not os.path.exists(cache_path):
+        with st.spinner("首次執行：正在為雲端伺服器安裝 Chromium 瀏覽器（需時約 1-2 分鐘）..."):
+            try:
+                # 安裝 chromium 瀏覽器
+                subprocess.run(["playwright", "install", "chromium"], check=True)
+                # 安裝運行瀏覽器所需的系統依賴 (系統庫)
+                subprocess.run(["playwright", "install-deps"], check=True)
+                st.success("✅ 瀏覽器安裝成功！")
+            except Exception as e:
+                st.error(f"❌ 瀏覽器安裝失敗: {e}")
 
-# 在程式一開始就執行
+# 在程式一啟動時就執行檢查
 install_playwright_browsers()
 # ==========================================
 # ⚙️ 1. 安全設定
