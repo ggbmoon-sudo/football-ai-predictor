@@ -165,34 +165,61 @@ with tab1:
         
 if st.button("🚀 執行批量 AI 精算分析"):
             summary_data = []
+            
+            # 定義一個內部提取函數，確保安全
+            def safe_extract(pattern, text, default="N/A"):
+                if not text: return default
+                match = re.search(pattern, text)
+                return match.group(1).strip() if match else default
+
             for t in targets:
-                # 注意：這裡開始進入 status 區塊
-                with st.status(f"正在分析: {t}...", expanded=False) as status:
-                    st.write("🔍 正在執行深度分析...")
+                # 進入狀態追蹤
+                with st.status(f"正在深度分析: {t}...", expanded=True) as status:
+                    st.write("🌐 正在獲取聯網數據與賠率走勢...")
                     report = deep_analyze_agent(t)
                     
-                    # ... 數據提取邏輯 ...
-                    # (確保這些都在 with 縮排內)
+                    # --- 關鍵修復點：確保變數在這裡被賦值 ---
+                    st.write("📊 正在解析精算標籤...")
                     
+                    # 使用正規表達式抓取數據
+                    score = safe_extract(r"\[Score:\s*(.*?)\]", report)
+                    corners = safe_extract(r"\[Corners:\s*(.*?)\]", report)
+                    rec = safe_extract(r"\[Rec:\s*(.*?)\]", report)
+                    
+                    # 抓取信心度數字
+                    conf_match = re.search(r"\[Win_Conf:\s*(\d+)%?\]", report)
+                    win_conf = int(conf_match.group(1)) if conf_match else 50
+                    
+                    # 把數據存入總表
                     summary_data.append({
-                        "賽事": t, "比分": score, "角球": corners, 
-                        "推薦": rec, "信心%": win_conf, "報告": report
+                        "賽事": t, 
+                        "比分": score, 
+                        "角球": corners, 
+                        "推薦": rec, 
+                        "信心%": win_conf, 
+                        "報告": report
                     })
                     
+                    # 顯示當前報告內容
+                    st.markdown(f"### {t} 分析簡報")
                     st.markdown(report)
+                    st.divider()
                     
-                    # ✅ 關鍵：這行必須與 st.write/st.markdown 保持同樣的縮排層級
-                    status.update(label=f"✅ {t} 完成", state="complete")
-                
-                # 這裡才離開 status 區塊
-                time.sleep(1) 
+                    # 延遲避免 API 頻率限制
+                    time.sleep(2)
                     
-                status.update(label=f"✅ {t} 完成", state="complete")
+                    # 更新狀態為完成
+                    status.update(label=f"✅ {t} 完成", state="complete", expanded=False)
 
+            # --- 迴圈結束後生成總表 ---
             if summary_data:
-                st.divider()
+                st.subheader("📋 批量分析決策中心")
                 df = pd.DataFrame(summary_data)
+                
+                # 顯示表格
                 st.table(df[["賽事", "比分", "角球", "推薦", "信心%"]])
+                
+                # 顯示信心圖表
                 st.bar_chart(df.set_index("賽事")["信心%"])
 
 # ------------------------------------------
