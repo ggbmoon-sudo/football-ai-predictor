@@ -1,5 +1,5 @@
+playwright
 streamlit
 google-generativeai
 requests
 pandas
-playwright
