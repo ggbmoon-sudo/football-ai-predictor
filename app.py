@@ -163,7 +163,7 @@ with tab1:
         choices = [m['display'] for m in st.session_state['display_matches']]
         targets = st.multiselect("勾選欲分析的場次：", choices)
         
-       if st.button("🚀 執行批量 AI 精算分析"):
+if st.button("🚀 執行批量 AI 精算分析"):
             summary_data = []
             for t in targets:
                 with st.status(f"正在分析: {t}...", expanded=False):
