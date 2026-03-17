@@ -1,6 +1,5 @@
 import streamlit as st
 import requests
-import google.generativeai as genai
 import datetime
 import pandas as pd
 import time
@@ -8,30 +7,26 @@ import re
 from playwright.sync_api import sync_playwright
 import os
 import subprocess
+from openai import OpenAI  # <--- 改用通用的 OpenAI 客戶端來串接第三方 URL
 
 # ==========================================
 # 🔧 雲端環境自動修復：安裝 Playwright 瀏覽器
 # ==========================================
 def install_playwright_browsers():
-    # 檢查是否已經安裝過瀏覽器，避免重複下載
-    # Streamlit Cloud 的快取路徑通常在 /home/appuser/.cache/ms-playwright
     cache_path = "/home/appuser/.cache/ms-playwright"
-    
     if not os.path.exists(cache_path):
         with st.spinner("首次執行：正在為雲端伺服器安裝 Chromium 瀏覽器（需時約 1-2 分鐘）..."):
             try:
-                # 安裝 chromium 瀏覽器
                 subprocess.run(["playwright", "install", "chromium"], check=True)
-                # 安裝運行瀏覽器所需的系統依賴 (系統庫)
                 subprocess.run(["playwright", "install-deps"], check=True)
                 st.success("✅ 瀏覽器安裝成功！")
             except Exception as e:
                 st.error(f"❌ 瀏覽器安裝失敗: {e}")
 
-# 在程式一啟動時就執行檢查
 install_playwright_browsers()
+
 # ==========================================
-# ⚙️ 1. 安全設定
+# ⚙️ 1. 安全設定與 AI 代理初始化
 # ==========================================
 try:
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
@@ -40,10 +35,15 @@ except KeyError:
     st.error("❌ 請在 Secrets 設定 GEMINI_API_KEY 與 FOOTBALL_API_KEY")
     st.stop()
 
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-2.5-flash')
+# 初始化通用 AI 客戶端，指向你的專屬 URL
+client = OpenAI(
+    api_key=GEMINI_API_KEY,
+    base_url="http://api.mttieeo.com/v1"
+)
+# 設定你的專屬模型名稱
+MODEL_NAME = "[F]gemini-2.5-flash"
 
-# 擴充版聯賽清單 (新增你要求的盃賽與聯賽)
+# 擴充版聯賽清單
 LEAGUE_IDS = {
     "英格蘭超級聯賽": 39, "西班牙甲組聯賽": 140, "西班牙乙組聯賽": 141,
     "意大利甲組聯賽": 135, "德國甲組聯賽": 78, "德國乙組聯賽": 79,
@@ -61,21 +61,22 @@ LEAGUE_IDS = {
 # 🧠 2. 工具函數：中文化與時區轉換
 # ==========================================
 
-# 將 UTC 時間轉為香港時間 (HKT)
 def convert_to_hkt(utc_date_str):
-    # API 傳回格式如 2026-03-17T21:00:00+00:00
     utc_dt = datetime.datetime.fromisoformat(utc_date_str.replace('Z', '+00:00'))
     hkt_dt = utc_dt + datetime.timedelta(hours=8)
     return hkt_dt.strftime("%m-%d %H:%M")
 
-# 利用 AI 批量翻譯隊名 (節省流量與時間)
 def translate_match_names(match_list):
     if not match_list: return []
     names_to_translate = "\n".join(match_list)
     prompt = f"請將以下足球賽事對陣清單翻譯成香港繁體中文隊名，保持『隊名A vs 隊名B』格式，直接回傳翻譯後的清單：\n{names_to_translate}"
     try:
-        response = model.generate_content(prompt)
-        translated = response.text.strip().split('\n')
+        # 改用 OpenAI 格式發送請求
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        translated = response.choices[0].message.content.strip().split('\n')
         return translated if len(translated) == len(match_list) else match_list
     except:
         return match_list
@@ -99,13 +100,23 @@ def deep_analyze_agent(match_name):
     [Corner_Conf: X%]
     """
     try:
-        response = model.generate_content(prompt)
-        # 檢查 AI 是否真的有給出內容
-        if not response.text:
+        # 改用 OpenAI 格式發送請求
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": "你是一位擁有 20 年經驗的足球精算師。"},
+                {"role": "user", "content": prompt}
+            ]
+        )
+        content = response.choices[0].message.content
+        if not content:
             return "AI 未能生成報告"
-        return response.text
+        return content
     except Exception as e:
-        return f"API 錯誤: {str(e)}"
+        error_msg = str(e)
+        if "429" in error_msg or "Quota" in error_msg:
+            return "⚠️ ERROR_QUOTA_EXCEEDED"
+        return f"API 錯誤: {error_msg}"
 
 # ==========================================
 # 📡 3. 數據抓取
@@ -141,12 +152,9 @@ with tab1:
             filtered_matches = [m for m in all_data if m['league']['id'] in ids]
             
             if filtered_matches:
-                # 建立原始資料清單
                 raw_names = [f"{m['teams']['home']['name']} vs {m['teams']['away']['name']}" for m in filtered_matches]
-                # 執行翻譯
                 translated_names = translate_match_names(raw_names)
                 
-                # 儲存轉換後的賽事資訊
                 display_matches = []
                 for i, m in enumerate(filtered_matches):
                     hkt_time = convert_to_hkt(m['fixture']['date'])
@@ -163,34 +171,32 @@ with tab1:
         choices = [m['display'] for m in st.session_state['display_matches']]
         targets = st.multiselect("勾選欲分析的場次：", choices)
         
-if st.button("🚀 執行批量 AI 精算分析"):
+        if st.button("🚀 執行批量 AI 精算分析"):
             summary_data = []
             
-            # 定義一個內部提取函數，確保安全
             def safe_extract(pattern, text, default="N/A"):
                 if not text: return default
                 match = re.search(pattern, text)
                 return match.group(1).strip() if match else default
 
             for t in targets:
-                # 進入狀態追蹤
                 with st.status(f"正在深度分析: {t}...", expanded=True) as status:
                     st.write("🌐 正在獲取聯網數據與賠率走勢...")
                     report = deep_analyze_agent(t)
                     
-                    # --- 關鍵修復點：確保變數在這裡被賦值 ---
+                    if report == "⚠️ ERROR_QUOTA_EXCEEDED":
+                        st.error("🚫 API 額度已耗盡，請檢查代理伺服器狀態。")
+                        break
+                    
                     st.write("📊 正在解析精算標籤...")
                     
-                    # 使用正規表達式抓取數據
                     score = safe_extract(r"\[Score:\s*(.*?)\]", report)
                     corners = safe_extract(r"\[Corners:\s*(.*?)\]", report)
                     rec = safe_extract(r"\[Rec:\s*(.*?)\]", report)
                     
-                    # 抓取信心度數字
                     conf_match = re.search(r"\[Win_Conf:\s*(\d+)%?\]", report)
                     win_conf = int(conf_match.group(1)) if conf_match else 50
                     
-                    # 把數據存入總表
                     summary_data.append({
                         "賽事": t, 
                         "比分": score, 
@@ -200,30 +206,21 @@ if st.button("🚀 執行批量 AI 精算分析"):
                         "報告": report
                     })
                     
-                    # 顯示當前報告內容
                     st.markdown(f"### {t} 分析簡報")
                     st.markdown(report)
                     st.divider()
                     
-                    # 延遲避免 API 頻率限制
                     time.sleep(2)
-                    
-                    # 更新狀態為完成
                     status.update(label=f"✅ {t} 完成", state="complete", expanded=False)
 
-            # --- 迴圈結束後生成總表 ---
             if summary_data:
                 st.subheader("📋 批量分析決策中心")
                 df = pd.DataFrame(summary_data)
-                
-                # 顯示表格
                 st.table(df[["賽事", "比分", "角球", "推薦", "信心%"]])
-                
-                # 顯示信心圖表
                 st.bar_chart(df.set_index("賽事")["信心%"])
 
 # ------------------------------------------
-# TAB 2: 馬會賠率雷達 (修改後的啟動區塊)
+# TAB 2: 馬會賠率雷達
 # ------------------------------------------
 with tab2:
     st.header("🕵️‍♂️ 馬會即時盤口監測")
@@ -231,30 +228,57 @@ with tab2:
         with st.status("啟動監測...", expanded=True) as status:
             try:
                 with sync_playwright() as p:
-                    # 1. 啟動瀏覽器
                     browser = p.chromium.launch(headless=True)
-                    
-                    # 2. 建立一個「偽裝身份」的上下文 (取代原本的 browser.new_page)
-                    # 這行讓馬會以為你是 Windows 上的 Chrome 瀏覽器
                     context = browser.new_context(
                         user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
                     )
-                    
-                    # 3. 在這個偽裝好的視窗中打開新分頁
                     page = context.new_page()
                     
-                    # --- 以下原本的掃描邏輯不變 ---
                     alerts = []
                     
                     status.write("🌐 正在巡邏主客和盤口...")
-                    page.goto("https://bet.hkjc.com/ch/football/home", wait_until="networkidle") # 建議加上等待
+                    page.goto("https://bet.hkjc.com/ch/football/home", wait_until="networkidle")
                     page.wait_for_timeout(5000)
                     
-                    # ... 剩下的 homes, aways, h_odds 抓取邏輯 ...
+                    # (此處保留了你原本提供的完整掃描邏輯結構)
+                    homes = page.locator('[data-testid$="_homeTeam"]').all()
+                    aways = page.locator('[data-testid$="_awayTeam"]').all()
+                    h_odds = page.locator('span[data-testid*="_HAD_"][data-testid$="_H_odds"]').all()
+                    d_odds = page.locator('span[data-testid*="_HAD_"][data-testid$="_D_odds"]').all()
+                    a_odds = page.locator('span[data-testid*="_HAD_"][data-testid$="_A_odds"]').all()
+
+                    for i in range(min(len(homes), len(h_odds))):
+                        h, d, a = h_odds[i].inner_text(), d_odds[i].inner_text(), a_odds[i].inner_text()
+                        if (h=="2.14" and d=="3.00" and a=="3.00") or (h=="3.00" and d=="3.00" and a=="2.14"):
+                            alerts.append(f"🚨 [HAD] {homes[i].inner_text()} vs {aways[i].inner_text()} ({h}/{d}/{a})")
+
+                    # 掃描 HHA 讓球主客和
+                    status.write("🌐 正在掃描讓球主客和 (/hha)...")
+                    page.goto("https://bet.hkjc.com/ch/football/hha", wait_until="networkidle")
+                    page.wait_for_timeout(5000)
+                    hha_homes = page.locator('[data-testid$="_homeTeam"]').all()
+                    hha_conds = page.locator('div[data-testid*="_HHA_"].cond').all()
+                    hha_odds = page.locator('span[data-testid*="_HHA_"][data-testid$="_H_odds"]').all()
                     
+                    for i in range(min(len(hha_homes), len(hha_odds))):
+                        if "-1" in hha_conds[i].inner_text() and hha_odds[i].inner_text()=="3.10":
+                            alerts.append(f"🚨 [HHA] {hha_homes[i].inner_text()} 讓球-1 @ 3.10")
+
+                    # 掃描 HIL 入球大細
+                    status.write("🌐 正在掃描入球大細 (/hil)...")
+                    page.goto("https://bet.hkjc.com/ch/football/hil", wait_until="networkidle")
+                    page.wait_for_timeout(5000)
+                    hil_homes = page.locator('[data-testid$="_homeTeam"]').all()
+                    hil_odds = page.locator('span[data-testid*="_HIL_"][data-testid$="_H_odds"]').all()
+                    
+                    for i in range(min(len(hil_homes), len(hil_odds))):
+                        if hil_odds[i].inner_text()=="1.66":
+                            alerts.append(f"🚨 [HIL] {hil_homes[i].inner_text()} 大細 @ 1.66")
+
                     browser.close()
                     status.update(label="✅ 巡邏結束", state="complete")
                     if alerts:
+                        st.success(f"發現 {len(alerts)} 場符合條件賽事！")
                         for a in alerts: st.warning(a)
                     else: st.write("目前無符合條件。")
             except Exception as e: st.error(f"雷達報錯: {e}")
