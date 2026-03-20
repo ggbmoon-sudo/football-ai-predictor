@@ -211,22 +211,30 @@ with tab1:
             filtered_matches = [m for m in all_data if m['league']['id'] in ids]
             
             if filtered_matches:
-                # 建立反向字典，用來把 API 的 ID 轉回你設定的中文聯賽名
                 REVERSE_LEAGUE_IDS = {v: k for k, v in LEAGUE_IDS.items()}
-                
                 raw_names = [f"{m['teams']['home']['name']} vs {m['teams']['away']['name']}" for m in filtered_matches]
                 translated_names = translate_match_names(raw_names)
                 
                 display_matches = []
                 for i, m in enumerate(filtered_matches):
-                    hkt_time = convert_to_hkt(m['fixture']['date'])
+                    # 解析原始 UTC 時間
+                    utc_str = m['fixture']['date']
+                    utc_dt = datetime.datetime.fromisoformat(utc_str.replace('Z', '+00:00'))
+                    
+                    # 計算 HKT 時間 (UTC+8)
+                    hkt_dt = utc_dt + datetime.timedelta(hours=8)
+                    
+                    # 格式化雙時區字串 (例如: 03-18 03:45 HKT (UTC 19:45))
+                    hkt_time_str = hkt_dt.strftime("%m-%d %H:%M")
+                    utc_time_str = utc_dt.strftime("%H:%M")
+                    time_display = f"{hkt_time_str} HKT (UTC {utc_time_str})"
+                    
                     league_id = m['league']['id']
-                    # 抓取中文聯賽名，如果找不到就顯示 API 原本的英文名
                     league_cn = REVERSE_LEAGUE_IDS.get(league_id, m['league']['name'])
                     
-                    # 🎯 這裡把聯賽名加進了顯示字串的最前面
+                    # 將雙時區與聯賽名一起塞入顯示字串
                     display_matches.append({
-                        "display": f"[{league_cn}] {hkt_time} | {translated_names[i]}",
+                        "display": f"[{league_cn}] {time_display} | {translated_names[i]}",
                         "raw": f"{m['teams']['home']['name']} vs {m['teams']['away']['name']}"
                     })
                 st.session_state['display_matches'] = display_matches
