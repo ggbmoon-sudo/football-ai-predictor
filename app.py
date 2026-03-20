@@ -375,4 +375,5 @@ with tab2:
                     if alerts:
                         st.success(f"發現 {len(alerts)} 場符合條件賽事！")
                         for a in alerts: st.warning(a)
-                    else: st.
+                    else: st.write("目前無符合條件。")
+            except Exception as e: st.error(f"雷達報錯: {e}")
